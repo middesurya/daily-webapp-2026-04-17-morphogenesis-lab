@@ -1,0 +1,1824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MorphoGenesis Lab — Interactive Reaction-Diffusion & Neural Cellular Automata</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<style>
+:root {
+  --bg: #0a0e17;
+  --surface: #111827;
+  --surface2: #1a2235;
+  --border: #2a3a52;
+  --text: #e2e8f0;
+  --text-dim: #8899aa;
+  --accent: #06d6a0;
+  --accent2: #118ab2;
+  --accent3: #ef476f;
+  --accent4: #ffd166;
+  --glow: rgba(6, 214, 160, 0.15);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+header {
+  text-align: center;
+  padding: 24px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(6,214,160,0.05) 0%, transparent 100%);
+}
+header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+header p {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.tab:hover { background: var(--surface2); color: var(--text); }
+.tab.active {
+  background: var(--glow);
+  color: var(--accent);
+  border: 1px solid rgba(6,214,160,0.3);
+}
+.panel { display: none; padding: 16px; }
+.panel.active { display: flex; gap: 16px; flex-wrap: wrap; }
+.canvas-container {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+canvas { display: block; }
+.controls {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 280px;
+  max-width: 320px;
+  flex-shrink: 0;
+}
+.controls h3 {
+  font-size: 14px;
+  color: var(--accent);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.control-group {
+  margin-bottom: 12px;
+}
+.control-group label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.control-group label span { color: var(--accent); font-weight: 600; }
+input[type="range"] {
+  width: 100%;
+  -webkit-appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 8px;
+}
+.preset-btn {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+.preset-btn:hover {
+  border-color: var(--accent);
+  background: var(--glow);
+}
+.preset-btn .emoji { font-size: 13px; margin-right: 3px; }
+.btn {
+  padding: 8px 16px;
+  border: 1px solid var(--accent);
+  background: rgba(6,214,160,0.1);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn:hover { background: rgba(6,214,160,0.2); }
+.btn-danger { border-color: var(--accent3); color: var(--accent3); background: rgba(239,71,111,0.1); }
+.btn-danger:hover { background: rgba(239,71,111,0.2); }
+.btn-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.stat {
+  background: var(--surface2);
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+.stat-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; }
+.stat-value { font-size: 14px; color: var(--accent); font-weight: 600; }
+.phase-canvas-wrap {
+  position: relative;
+  cursor: crosshair;
+}
+.phase-marker {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-shadow: 0 0 8px var(--accent);
+}
+.nca-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.nca-cell {
+  text-align: center;
+}
+.nca-cell canvas {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.nca-cell p { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+.chart-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.math-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 800px;
+  line-height: 1.7;
+}
+.math-section h3 { color: var(--accent); margin-bottom: 12px; font-size: 16px; }
+.math-section h4 { color: var(--accent2); margin: 16px 0 8px; font-size: 14px; }
+.math-section p { font-size: 13px; color: var(--text); margin-bottom: 10px; }
+.equation {
+  background: var(--surface2);
+  border-left: 3px solid var(--accent);
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-size: 14px;
+  border-radius: 0 4px 4px 0;
+  overflow-x: auto;
+}
+.bio-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 8px 0;
+}
+.bio-card h5 { color: var(--accent4); font-size: 12px; margin-bottom: 4px; }
+.bio-card p { font-size: 11px; color: var(--text-dim); }
+.tool-palette {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.tool-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.tool-btn.active { border-color: var(--accent); background: var(--glow); }
+.tool-btn:hover { border-color: var(--accent); }
+.separator { border-top: 1px solid var(--border); margin: 12px 0; }
+.color-select {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0;
+}
+.color-opt {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.color-opt.active { border-color: #fff; }
+footer {
+  text-align: center;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+footer a { color: var(--accent); text-decoration: none; }
+@media (max-width: 768px) {
+  .panel.active { flex-direction: column; }
+  .controls { max-width: 100%; min-width: auto; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>MorphoGenesis Lab</h1>
+  <p>Interactive Reaction-Diffusion & Neural Cellular Automata Laboratory</p>
+</header>
+
+<div class="tabs" id="tabBar">
+  <button class="tab active" data-tab="rd">Reaction-Diffusion</button>
+  <button class="tab" data-tab="phase">Phase Diagram</button>
+  <button class="tab" data-tab="nca">Neural Cellular Automata</button>
+  <button class="tab" data-tab="perturb">Perturbation Lab</button>
+  <button class="tab" data-tab="math">Mathematical Foundations</button>
+</div>
+
+<!-- TAB 1: Reaction-Diffusion -->
+<div class="panel active" id="panel-rd">
+  <div class="canvas-container">
+    <canvas id="rdCanvas" width="512" height="512"></canvas>
+  </div>
+  <div class="controls">
+    <h3>Gray-Scott Parameters</h3>
+    <div class="control-group">
+      <label>Feed Rate (F) <span id="fVal">0.0370</span></label>
+      <input type="range" id="feedRate" min="0.01" max="0.08" step="0.0001" value="0.037">
+    </div>
+    <div class="control-group">
+      <label>Kill Rate (k) <span id="kVal">0.0600</span></label>
+      <input type="range" id="killRate" min="0.04" max="0.07" step="0.0001" value="0.06">
+    </div>
+    <div class="control-group">
+      <label>Diffusion U (Du) <span id="duVal">0.210</span></label>
+      <input type="range" id="diffU" min="0.05" max="0.40" step="0.001" value="0.21">
+    </div>
+    <div class="control-group">
+      <label>Diffusion V (Dv) <span id="dvVal">0.105</span></label>
+      <input type="range" id="diffV" min="0.01" max="0.20" step="0.001" value="0.105">
+    </div>
+    <div class="control-group">
+      <label>Speed (steps/frame) <span id="speedVal">8</span></label>
+      <input type="range" id="speed" min="1" max="32" step="1" value="8">
+    </div>
+    <div class="control-group">
+      <label>Brush Size <span id="brushVal">12</span></label>
+      <input type="range" id="brushSize" min="2" max="40" step="1" value="12">
+    </div>
+
+    <h3 style="margin-top:16px">Biological Presets</h3>
+    <div class="presets" id="presetGrid"></div>
+
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn" id="btnReset">Reset</button>
+      <button class="btn" id="btnPause">Pause</button>
+      <button class="btn" id="btnSeed">Random Seed</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Frame</div><div class="stat-value" id="frameCount">0</div></div>
+      <div class="stat"><div class="stat-label">FPS</div><div class="stat-value" id="fpsCount">0</div></div>
+      <div class="stat"><div class="stat-label">Resolution</div><div class="stat-value">512x512</div></div>
+      <div class="stat"><div class="stat-label">Sim Time</div><div class="stat-value" id="simTime">0s</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Phase Diagram -->
+<div class="panel" id="panel-phase">
+  <div class="canvas-container phase-canvas-wrap">
+    <canvas id="phaseCanvas" width="512" height="512"></canvas>
+    <div class="phase-marker" id="phaseMarker" style="display:none"></div>
+  </div>
+  <div class="controls">
+    <h3>Phase Space Explorer</h3>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">
+      Click anywhere on the phase diagram to explore the pattern at that (F, k) coordinate.
+      The diagram maps Feed Rate (x-axis) vs Kill Rate (y-axis).
+    </p>
+    <div class="control-group">
+      <label>Current F <span id="phaseFVal">—</span></label>
+    </div>
+    <div class="control-group">
+      <label>Current k <span id="phaseKVal">—</span></label>
+    </div>
+    <div class="control-group">
+      <label>Pattern Class <span id="phaseClass">—</span></label>
+    </div>
+    <div class="separator"></div>
+    <p style="font-size:11px;color:var(--text-dim)">
+      <strong style="color:var(--accent)">Pattern Regions:</strong><br>
+      Blue = Uniform/Extinction<br>
+      Cyan = Spots/Dots<br>
+      Green = Stripes/Worms<br>
+      Yellow = Labyrinthine/Maze<br>
+      Orange = Mitosis/Pulsing<br>
+      Red = Chaos/Turbulence
+    </p>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn" id="btnApplyPhase">Apply to Sim</button>
+      <button class="btn" id="btnRegeneratePhase">Regenerate Map</button>
+    </div>
+    <div style="margin-top:12px">
+      <canvas id="phasePreview" width="128" height="128" style="border:1px solid var(--border);border-radius:4px;width:100%;image-rendering:pixelated"></canvas>
+      <p style="font-size:10px;color:var(--text-dim);margin-top:4px;text-align:center">Preview at selected parameters</p>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: NCA -->
+<div class="panel" id="panel-nca">
+  <div style="flex:1;min-width:300px">
+    <div class="nca-grid">
+      <div class="nca-cell">
+        <canvas id="ncaTarget" width="64" height="64" style="width:200px;height:200px;image-rendering:pixelated"></canvas>
+        <p>Target Pattern</p>
+      </div>
+      <div class="nca-cell">
+        <canvas id="ncaCurrent" width="64" height="64" style="width:200px;height:200px;image-rendering:pixelated"></canvas>
+        <p>NCA Output (Growing)</p>
+      </div>
+      <div class="nca-cell">
+        <canvas id="ncaDamaged" width="64" height="64" style="width:200px;height:200px;image-rendering:pixelated"></canvas>
+        <p>Damaged State</p>
+      </div>
+      <div class="nca-cell">
+        <canvas id="ncaRegenerated" width="64" height="64" style="width:200px;height:200px;image-rendering:pixelated"></canvas>
+        <p>Regenerated</p>
+      </div>
+    </div>
+    <div class="chart-container" style="margin-top:12px">
+      <canvas id="ncaLossChart" width="500" height="150"></canvas>
+    </div>
+  </div>
+  <div class="controls">
+    <h3>NCA Training</h3>
+    <div class="control-group">
+      <label>Hidden Channels <span id="ncaHiddenVal">16</span></label>
+      <input type="range" id="ncaHidden" min="8" max="32" step="4" value="16">
+    </div>
+    <div class="control-group">
+      <label>Learning Rate <span id="ncaLRVal">0.001</span></label>
+      <input type="range" id="ncaLR" min="-4" max="-2" step="0.1" value="-3">
+    </div>
+    <div class="control-group">
+      <label>Training Steps <span id="ncaStepsVal">40</span></label>
+      <input type="range" id="ncaSteps" min="20" max="80" step="5" value="40">
+    </div>
+    <div class="control-group">
+      <label>Target Pattern</label>
+      <select id="ncaTargetSelect" style="width:100%;padding:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:inherit;font-size:12px">
+        <option value="circle">Circle</option>
+        <option value="ring">Ring</option>
+        <option value="cross">Cross</option>
+        <option value="diamond">Diamond</option>
+        <option value="gecko">Gecko Emoji</option>
+        <option value="star">Star</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="btnTrainNCA">Train NCA</button>
+      <button class="btn" id="btnGrowNCA">Grow</button>
+      <button class="btn btn-danger" id="btnDamageNCA">Damage & Regen</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Epoch</div><div class="stat-value" id="ncaEpoch">0</div></div>
+      <div class="stat"><div class="stat-label">Loss</div><div class="stat-value" id="ncaLoss">—</div></div>
+      <div class="stat"><div class="stat-label">Status</div><div class="stat-value" id="ncaStatus" style="font-size:11px">Idle</div></div>
+      <div class="stat"><div class="stat-label">Params</div><div class="stat-value" id="ncaParams">—</div></div>
+    </div>
+    <div class="separator"></div>
+    <p style="font-size:11px;color:var(--text-dim)">
+      <strong style="color:var(--accent)">How NCA works:</strong>
+      Each cell has a hidden state vector. A small neural network reads the cell's neighborhood (via Sobel filters)
+      and outputs a state update. Identical rules applied everywhere produce complex emergent behavior — including
+      self-repair after damage.
+    </p>
+  </div>
+</div>
+
+<!-- TAB 4: Perturbation Lab -->
+<div class="panel" id="panel-perturb">
+  <div class="canvas-container">
+    <canvas id="perturbCanvas" width="512" height="512"></canvas>
+  </div>
+  <div class="controls">
+    <h3>Perturbation Tools</h3>
+    <div class="tool-palette">
+      <button class="tool-btn active" data-tool="seed" title="Seed chemical V">+</button>
+      <button class="tool-btn" data-tool="erase" title="Erase (set to uniform)">-</button>
+      <button class="tool-btn" data-tool="barrier" title="Place barrier">|</button>
+      <button class="tool-btn" data-tool="cut" title="Horizontal cut">--</button>
+      <button class="tool-btn" data-tool="bomb" title="Explode region">*</button>
+    </div>
+    <div class="control-group">
+      <label>Perturbation Size <span id="pertSizeVal">20</span></label>
+      <input type="range" id="pertSize" min="5" max="60" step="1" value="20">
+    </div>
+    <div class="control-group">
+      <label>Sim Feed Rate (F) <span id="pertFVal">0.0550</span></label>
+      <input type="range" id="pertFeed" min="0.01" max="0.08" step="0.0001" value="0.055">
+    </div>
+    <div class="control-group">
+      <label>Sim Kill Rate (k) <span id="pertKVal">0.0620</span></label>
+      <input type="range" id="pertKill" min="0.04" max="0.07" step="0.0001" value="0.062">
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="btnPertReset">Reset</button>
+      <button class="btn" id="btnPertPause">Pause</button>
+      <button class="btn" id="btnPertFill">Fill Random</button>
+    </div>
+    <div class="separator"></div>
+    <p style="font-size:11px;color:var(--text-dim)">
+      <strong style="color:var(--accent)">Experiment:</strong>
+      Let a pattern grow, then use perturbation tools to damage it. Watch how reaction-diffusion
+      systems self-organize to fill gaps and restore structural order — a key property of biological morphogenesis.
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Frame</div><div class="stat-value" id="pertFrame">0</div></div>
+      <div class="stat"><div class="stat-label">FPS</div><div class="stat-value" id="pertFPS">0</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 5: Math -->
+<div class="panel" id="panel-math">
+  <div class="math-section" style="flex:1">
+    <h3>The Mathematics of Morphogenesis</h3>
+    <p>In 1952, Alan Turing published "The Chemical Basis of Morphogenesis," proposing that patterns in biology — spots, stripes, spirals — arise from the interaction of just two chemicals (morphogens) diffusing and reacting across a tissue.</p>
+
+    <h4>The Gray-Scott Model</h4>
+    <p>The Gray-Scott model is a specific reaction-diffusion system with two chemical species U and V:</p>
+    <div class="equation">
+      du/dt = D<sub>u</sub> nabla<sup>2</sup>u - uv<sup>2</sup> + F(1 - u)<br>
+      dv/dt = D<sub>v</sub> nabla<sup>2</sup>v + uv<sup>2</sup> - (F + k)v
+    </div>
+    <p>Where:</p>
+    <div class="bio-card">
+      <h5>D<sub>u</sub>, D<sub>v</sub> — Diffusion Rates</h5>
+      <p>How fast each chemical spreads through space. The key insight: U diffuses faster than V (activator-inhibitor pattern). This differential diffusion is what creates instability and pattern formation.</p>
+    </div>
+    <div class="bio-card">
+      <h5>F — Feed Rate</h5>
+      <p>Rate at which chemical U is replenished from an external source (like nutrients flowing into a cell culture). Controls how "alive" the system is.</p>
+    </div>
+    <div class="bio-card">
+      <h5>k — Kill Rate</h5>
+      <p>Rate at which chemical V is removed from the system (like degradation or consumption). Controls pattern density and type.</p>
+    </div>
+    <div class="bio-card">
+      <h5>uv<sup>2</sup> — Autocatalytic Reaction</h5>
+      <p>The cubic reaction term: V catalyzes its own production by consuming U. This positive feedback loop is the "activator" that creates local peaks of concentration.</p>
+    </div>
+
+    <h4>Turing Instability</h4>
+    <p>The magic happens when a uniform steady state becomes <em>unstable</em> to spatial perturbations. Linearizing around the steady state and analyzing the dispersion relation reveals that certain spatial frequencies grow exponentially — these become the pattern wavelength.</p>
+    <div class="equation">
+      Dispersion relation: sigma(q) = trace(J)/2 +/- sqrt((trace(J)/2)<sup>2</sup> - det(J(q)))<br>
+      Pattern forms when sigma > 0 for some wavenumber q != 0 while sigma(0) < 0
+    </div>
+    <p>This means the system is stable to uniform changes but unstable to <em>spatial</em> ones — the hallmark of a Turing pattern.</p>
+
+    <h4>Connection to Biology</h4>
+    <div class="bio-card">
+      <h5>Zebrafish Stripes</h5>
+      <p>Melanophores (dark) and xanthophores (light) interact through direct cell contact and diffusible signals, creating Turing patterns. Shoji et al. (2003) showed the reaction-diffusion model accurately predicts stripe formation and mutation effects.</p>
+    </div>
+    <div class="bio-card">
+      <h5>Leopard Spots</h5>
+      <p>Morphogen gradients (likely involving Wnt and DKK4 pathways) create periodic patterns during hair follicle development. The spots emerge during embryonic development and are "frozen in" as the animal grows.</p>
+    </div>
+    <div class="bio-card">
+      <h5>Coral Growth</h5>
+      <p>Branching coral morphology can be modeled as reaction-diffusion on a growing surface. The Laplacian instability at the growth front, combined with nutrient diffusion, creates fractal-like branching patterns.</p>
+    </div>
+    <div class="bio-card">
+      <h5>Digit Formation</h5>
+      <p>The spacing of fingers and toes in vertebrates is governed by a Turing-type mechanism involving BMP, SOX9, and Wnt signaling pathways — confirmed experimentally by Raspopovic et al. (2014) in mouse limb buds.</p>
+    </div>
+
+    <h4>Neural Cellular Automata</h4>
+    <p>NCA modernize Turing's vision using neural networks. Instead of hand-designed reaction terms, a small neural network learns the local update rule from data. Each cell:</p>
+    <div class="equation">
+      1. Perceives neighbors (via Sobel filters: identity, gradient_x, gradient_y)<br>
+      2. Processes perception through a neural network (Conv1x1 -> ReLU -> Conv1x1)<br>
+      3. Applies a stochastic update (dropout mask for asynchronous updates)<br>
+      4. Result: state[t+1] = state[t] + update * mask
+    </div>
+    <p>The residual connection + stochastic updates enable robust self-organization and self-repair — properties that emerge from the training process rather than being explicitly programmed.</p>
+
+    <h4>Key References</h4>
+    <div class="bio-card">
+      <h5>Foundational Papers</h5>
+      <p>
+        Turing, A.M. (1952). "The Chemical Basis of Morphogenesis"<br>
+        Pearson, J.E. (1993). "Complex Patterns in a Simple System" (Gray-Scott)<br>
+        Mordvintsev et al. (2020). "Growing Neural Cellular Automata" (Distill)<br>
+        Randazzo et al. (2021). "Self-classifying MNIST Digits" (NCA)<br>
+        Mordvintsev et al. (2026). "BraiNCA: Brain-inspired NCA for morphogenesis & motor control"
+      </p>
+    </div>
+  </div>
+</div>
+
+<footer>
+  MorphoGenesis Lab by <a href="https://github.com/middesurya">Surya Midde</a> | Built with WebGL + TF.js | MIT License
+</footer>
+
+<script>
+// ============================================================
+// UTILITY: EXPORT PATH FOR TOOLS
+// ============================================================
+const PATH_BIN = '';
+
+// ============================================================
+// TAB NAVIGATION
+// ============================================================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ============================================================
+// PRESETS
+// ============================================================
+const PRESETS = [
+  { name: 'Mitosis', emoji: '\u{1F9EC}', F: 0.0367, k: 0.0649, du: 0.21, dv: 0.105 },
+  { name: 'Coral', emoji: '\u{1FAB8}', F: 0.0545, k: 0.062, du: 0.21, dv: 0.105 },
+  { name: 'Maze', emoji: '\u{1F9E9}', F: 0.029, k: 0.057, du: 0.21, dv: 0.105 },
+  { name: 'Spots', emoji: '\u{1F406}', F: 0.035, k: 0.065, du: 0.21, dv: 0.105 },
+  { name: 'Stripes', emoji: '\u{1F993}', F: 0.04, k: 0.06, du: 0.21, dv: 0.105 },
+  { name: 'Worms', emoji: '\u{1FAB1}', F: 0.046, k: 0.063, du: 0.21, dv: 0.105 },
+  { name: 'Bubbles', emoji: '\u{1FAE7}', F: 0.012, k: 0.05, du: 0.21, dv: 0.105 },
+  { name: 'Waves', emoji: '\u{1F30A}', F: 0.014, k: 0.054, du: 0.21, dv: 0.105 },
+  { name: 'Spirals', emoji: '\u{1F300}', F: 0.018, k: 0.051, du: 0.21, dv: 0.105 },
+  { name: 'Fingerprint', emoji: '\u{1F91A}', F: 0.055, k: 0.062, du: 0.21, dv: 0.105 },
+  { name: 'Solitons', emoji: '\u26A1', F: 0.03, k: 0.062, du: 0.21, dv: 0.105 },
+  { name: 'Chaos', emoji: '\u{1F525}', F: 0.026, k: 0.051, du: 0.21, dv: 0.105 },
+];
+
+const presetGrid = document.getElementById('presetGrid');
+PRESETS.forEach((p, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'preset-btn';
+  btn.innerHTML = `<span class="emoji">${p.emoji}</span>${p.name}`;
+  btn.addEventListener('click', () => applyPreset(i));
+  presetGrid.appendChild(btn);
+});
+
+function applyPreset(idx) {
+  const p = PRESETS[idx];
+  document.getElementById('feedRate').value = p.F;
+  document.getElementById('killRate').value = p.k;
+  document.getElementById('diffU').value = p.du;
+  document.getElementById('diffV').value = p.dv;
+  updateSliderDisplays();
+  rdParams.F = p.F; rdParams.k = p.k; rdParams.Du = p.du; rdParams.Dv = p.dv;
+  initRDState();
+}
+
+// ============================================================
+// SLIDER DISPLAYS
+// ============================================================
+function updateSliderDisplays() {
+  document.getElementById('fVal').textContent = parseFloat(document.getElementById('feedRate').value).toFixed(4);
+  document.getElementById('kVal').textContent = parseFloat(document.getElementById('killRate').value).toFixed(4);
+  document.getElementById('duVal').textContent = parseFloat(document.getElementById('diffU').value).toFixed(3);
+  document.getElementById('dvVal').textContent = parseFloat(document.getElementById('diffV').value).toFixed(3);
+  document.getElementById('speedVal').textContent = document.getElementById('speed').value;
+  document.getElementById('brushVal').textContent = document.getElementById('brushSize').value;
+}
+['feedRate','killRate','diffU','diffV','speed','brushSize'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    updateSliderDisplays();
+    rdParams.F = parseFloat(document.getElementById('feedRate').value);
+    rdParams.k = parseFloat(document.getElementById('killRate').value);
+    rdParams.Du = parseFloat(document.getElementById('diffU').value);
+    rdParams.Dv = parseFloat(document.getElementById('diffV').value);
+    rdParams.stepsPerFrame = parseInt(document.getElementById('speed').value);
+    rdParams.brushSize = parseInt(document.getElementById('brushSize').value);
+  });
+});
+
+// ============================================================
+// WEBGL REACTION-DIFFUSION ENGINE
+// ============================================================
+const SIZE = 512;
+let rdParams = { F: 0.037, k: 0.06, Du: 0.21, Dv: 0.105, stepsPerFrame: 8, brushSize: 12 };
+let rdPaused = false;
+let rdFrame = 0;
+let rdStartTime = Date.now();
+let fpsFrames = 0;
+let fpsLast = Date.now();
+
+const rdCanvas = document.getElementById('rdCanvas');
+const gl = rdCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
+if (!gl) { alert('WebGL2 not supported!'); }
+
+// Enable float textures
+const ext = gl.getExtension('EXT_color_buffer_float');
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.error('Shader error:', gl.getShaderInfoLog(shader));
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
+}
+
+function createProgram(gl, vs, fs) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error('Program error:', gl.getProgramInfoLog(prog));
+    return null;
+  }
+  return prog;
+}
+
+const quadVS = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0, 1);
+}`;
+
+const computeFS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_state;
+uniform float u_F, u_k, u_Du, u_Dv;
+uniform float u_dx;
+uniform vec2 u_brush;
+uniform float u_brushSize;
+uniform float u_brushActive;
+out vec4 fragColor;
+void main() {
+  vec2 px = vec2(1.0) / vec2(textureSize(u_state, 0));
+  vec4 s = texture(u_state, v_uv);
+  float u = s.r, v = s.g;
+  // Laplacian (5-point stencil)
+  float lu = texture(u_state, v_uv + vec2(px.x, 0)).r
+           + texture(u_state, v_uv - vec2(px.x, 0)).r
+           + texture(u_state, v_uv + vec2(0, px.y)).r
+           + texture(u_state, v_uv - vec2(0, px.y)).r
+           - 4.0 * u;
+  float lv = texture(u_state, v_uv + vec2(px.x, 0)).g
+           + texture(u_state, v_uv - vec2(px.x, 0)).g
+           + texture(u_state, v_uv + vec2(0, px.y)).g
+           + texture(u_state, v_uv - vec2(0, px.y)).g
+           - 4.0 * v;
+  float uvv = u * v * v;
+  float du = u_Du * lu - uvv + u_F * (1.0 - u);
+  float dv = u_Dv * lv + uvv - (u_F + u_k) * v;
+  u += du * u_dx;
+  v += dv * u_dx;
+  // Brush interaction
+  if (u_brushActive > 0.5) {
+    float d = length((v_uv - u_brush) * vec2(textureSize(u_state, 0)));
+    if (d < u_brushSize) {
+      v = 0.9;
+      u = 0.1;
+    }
+  }
+  fragColor = vec4(clamp(u, 0.0, 1.0), clamp(v, 0.0, 1.0), 0.0, 1.0);
+}`;
+
+const renderFS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_state;
+out vec4 fragColor;
+void main() {
+  vec4 s = texture(u_state, v_uv);
+  float v = s.g;
+  float u = s.r;
+  // Beautiful color mapping
+  vec3 c1 = vec3(0.04, 0.06, 0.09); // deep bg
+  vec3 c2 = vec3(0.02, 0.45, 0.55); // teal
+  vec3 c3 = vec3(0.06, 0.84, 0.63); // accent green
+  vec3 c4 = vec3(1.0, 0.82, 0.4);   // gold
+  vec3 c5 = vec3(0.94, 0.28, 0.44); // pink
+  float t = v * 3.0;
+  vec3 col;
+  if (t < 0.5) col = mix(c1, c2, t * 2.0);
+  else if (t < 1.0) col = mix(c2, c3, (t - 0.5) * 2.0);
+  else if (t < 2.0) col = mix(c3, c4, t - 1.0);
+  else col = mix(c4, c5, clamp(t - 2.0, 0.0, 1.0));
+  fragColor = vec4(col, 1.0);
+}`;
+
+// Compile shaders
+const vs = createShader(gl, gl.VERTEX_SHADER, quadVS);
+const csFS = createShader(gl, gl.FRAGMENT_SHADER, computeFS);
+const rsFS = createShader(gl, gl.FRAGMENT_SHADER, renderFS);
+const computeProg = createProgram(gl, vs, csFS);
+const renderProg = createProgram(gl, createShader(gl, gl.VERTEX_SHADER, quadVS), rsFS);
+
+// Full-screen quad
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+// State textures (ping-pong)
+let texA, texB, fbA, fbB;
+
+function createStateTexture() {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, SIZE, SIZE, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  return tex;
+}
+
+function createFBO(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+texA = createStateTexture();
+texB = createStateTexture();
+fbA = createFBO(texA);
+fbB = createFBO(texB);
+
+function initRDState() {
+  const data = new Float32Array(SIZE * SIZE * 4);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    data[i * 4] = 1.0;     // U = 1 everywhere
+    data[i * 4 + 1] = 0.0; // V = 0 everywhere
+    data[i * 4 + 2] = 0.0;
+    data[i * 4 + 3] = 1.0;
+  }
+  // Seed some random spots
+  for (let s = 0; s < 12; s++) {
+    const cx = Math.floor(Math.random() * (SIZE - 40) + 20);
+    const cy = Math.floor(Math.random() * (SIZE - 40) + 20);
+    const r = Math.floor(Math.random() * 8 + 4);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx + dy*dy <= r*r) {
+          const x = cx + dx, y = cy + dy;
+          if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            const idx = (y * SIZE + x) * 4;
+            data[idx] = 0.5 + Math.random() * 0.1;
+            data[idx + 1] = 0.25 + Math.random() * 0.1;
+          }
+        }
+      }
+    }
+  }
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, SIZE, SIZE, 0, gl.RGBA, gl.FLOAT, data);
+  gl.bindTexture(gl.TEXTURE_2D, texB);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, SIZE, SIZE, 0, gl.RGBA, gl.FLOAT, data);
+  rdFrame = 0;
+  rdStartTime = Date.now();
+}
+
+initRDState();
+
+let mouseDown = false;
+let mouseX = 0, mouseY = 0;
+
+rdCanvas.addEventListener('mousedown', (e) => { mouseDown = true; updateMouse(e); });
+rdCanvas.addEventListener('mousemove', (e) => { if (mouseDown) updateMouse(e); });
+rdCanvas.addEventListener('mouseup', () => { mouseDown = false; });
+rdCanvas.addEventListener('mouseleave', () => { mouseDown = false; });
+
+function updateMouse(e) {
+  const rect = rdCanvas.getBoundingClientRect();
+  mouseX = (e.clientX - rect.left) / rect.width;
+  mouseY = 1.0 - (e.clientY - rect.top) / rect.height;
+}
+
+function drawQuad(prog) {
+  const posLoc = gl.getAttribLocation(prog, 'a_pos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function rdStep() {
+  // Compute step
+  gl.useProgram(computeProg);
+  gl.uniform1f(gl.getUniformLocation(computeProg, 'u_F'), rdParams.F);
+  gl.uniform1f(gl.getUniformLocation(computeProg, 'u_k'), rdParams.k);
+  gl.uniform1f(gl.getUniformLocation(computeProg, 'u_Du'), rdParams.Du);
+  gl.uniform1f(gl.getUniformLocation(computeProg, 'u_Dv'), rdParams.Dv);
+  gl.uniform1f(gl.getUniformLocation(computeProg, 'u_dx'), 1.0);
+  gl.uniform2f(gl.getUniformLocation(computeProg, 'u_brush'), mouseX, mouseY);
+  gl.uniform1f(gl.getUniformLocation(computeProg, 'u_brushSize'), rdParams.brushSize);
+  gl.uniform1f(gl.getUniformLocation(computeProg, 'u_brushActive'), mouseDown ? 1.0 : 0.0);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.uniform1i(gl.getUniformLocation(computeProg, 'u_state'), 0);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbB);
+  gl.viewport(0, 0, SIZE, SIZE);
+  drawQuad(computeProg);
+
+  // Swap
+  [texA, texB] = [texB, texA];
+  [fbA, fbB] = [fbB, fbA];
+}
+
+function rdRender() {
+  gl.useProgram(renderProg);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.uniform1i(gl.getUniformLocation(renderProg, 'u_state'), 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, SIZE, SIZE);
+  drawQuad(renderProg);
+}
+
+function rdLoop() {
+  if (!rdPaused) {
+    for (let i = 0; i < rdParams.stepsPerFrame; i++) {
+      rdStep();
+    }
+    rdFrame += rdParams.stepsPerFrame;
+  }
+  rdRender();
+
+  // Stats
+  fpsFrames++;
+  const now = Date.now();
+  if (now - fpsLast > 1000) {
+    document.getElementById('fpsCount').textContent = fpsFrames;
+    fpsFrames = 0;
+    fpsLast = now;
+  }
+  document.getElementById('frameCount').textContent = rdFrame;
+  document.getElementById('simTime').textContent = ((now - rdStartTime) / 1000).toFixed(0) + 's';
+
+  requestAnimationFrame(rdLoop);
+}
+
+rdLoop();
+
+// Buttons
+document.getElementById('btnReset').addEventListener('click', initRDState);
+document.getElementById('btnPause').addEventListener('click', function() {
+  rdPaused = !rdPaused;
+  this.textContent = rdPaused ? 'Play' : 'Pause';
+});
+document.getElementById('btnSeed').addEventListener('click', () => {
+  // Add random seeds to current state
+  mouseDown = true;
+  for (let i = 0; i < 5; i++) {
+    mouseX = Math.random();
+    mouseY = Math.random();
+    rdStep();
+  }
+  mouseDown = false;
+});
+
+// ============================================================
+// PHASE DIAGRAM
+// ============================================================
+const phaseCanvas = document.getElementById('phaseCanvas');
+const phaseCtx = phaseCanvas.getContext('2d');
+const phasePreview = document.getElementById('phasePreview');
+const phasePreviewCtx = phasePreview.getContext('2d');
+let selectedPhaseF = null, selectedPhaseK = null;
+
+function classifyPattern(F, k) {
+  // Approximate classification based on Gray-Scott parameter space
+  const fk = F + k;
+  if (k > 0.066 || F < 0.01) return { type: 'extinction', color: [20, 30, 50] };
+  if (F > 0.06 && k < 0.065) return { type: 'fingerprint', color: [50, 180, 120] };
+  if (F > 0.05 && k > 0.06) return { type: 'worms', color: [60, 200, 100] };
+  if (F > 0.04 && k > 0.058 && k < 0.066) return { type: 'stripes', color: [100, 220, 140] };
+  if (F > 0.03 && F < 0.04 && k > 0.06) return { type: 'spots', color: [0, 180, 200] };
+  if (F > 0.03 && F < 0.04 && k > 0.055 && k <= 0.06) return { type: 'mitosis', color: [255, 180, 60] };
+  if (F > 0.025 && F < 0.035 && k > 0.05 && k < 0.06) return { type: 'maze', color: [200, 200, 60] };
+  if (F < 0.025 && k < 0.055) return { type: 'chaos', color: [220, 60, 80] };
+  if (F < 0.02) return { type: 'waves', color: [180, 80, 180] };
+  return { type: 'transition', color: [100, 100, 120] };
+}
+
+function drawPhaseDiagram() {
+  const w = phaseCanvas.width, h = phaseCanvas.height;
+  const imgData = phaseCtx.createImageData(w, h);
+  const fMin = 0.01, fMax = 0.08, kMin = 0.04, kMax = 0.07;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const F = fMin + (x / w) * (fMax - fMin);
+      const k = kMax - (y / h) * (kMax - kMin); // invert Y so k increases upward
+      const cls = classifyPattern(F, k);
+      const idx = (y * w + x) * 4;
+      // Add noise for organic feel
+      const noise = (Math.sin(x * 0.3) * Math.cos(y * 0.3) * 10);
+      imgData.data[idx] = Math.min(255, cls.color[0] + noise);
+      imgData.data[idx + 1] = Math.min(255, cls.color[1] + noise);
+      imgData.data[idx + 2] = Math.min(255, cls.color[2] + noise);
+      imgData.data[idx + 3] = 255;
+    }
+  }
+  phaseCtx.putImageData(imgData, 0, 0);
+
+  // Grid lines
+  phaseCtx.strokeStyle = 'rgba(255,255,255,0.1)';
+  phaseCtx.lineWidth = 0.5;
+  for (let i = 0; i <= 10; i++) {
+    const x = (i / 10) * w;
+    phaseCtx.beginPath(); phaseCtx.moveTo(x, 0); phaseCtx.lineTo(x, h); phaseCtx.stroke();
+    const y = (i / 10) * h;
+    phaseCtx.beginPath(); phaseCtx.moveTo(0, y); phaseCtx.lineTo(w, y); phaseCtx.stroke();
+  }
+
+  // Labels
+  phaseCtx.fillStyle = 'rgba(255,255,255,0.7)';
+  phaseCtx.font = '11px monospace';
+  phaseCtx.fillText('F (Feed Rate) \u2192', w / 2 - 50, h - 6);
+  phaseCtx.save();
+  phaseCtx.translate(12, h / 2 + 40);
+  phaseCtx.rotate(-Math.PI / 2);
+  phaseCtx.fillText('k (Kill Rate) \u2192', 0, 0);
+  phaseCtx.restore();
+
+  // Region labels
+  phaseCtx.font = 'bold 10px monospace';
+  phaseCtx.fillStyle = 'rgba(255,255,255,0.5)';
+  phaseCtx.fillText('CHAOS', 30, 60);
+  phaseCtx.fillText('SPOTS', 280, 130);
+  phaseCtx.fillText('STRIPES', 350, 200);
+  phaseCtx.fillText('MAZE', 200, 250);
+  phaseCtx.fillText('MITOSIS', 250, 180);
+  phaseCtx.fillText('EXTINCTION', 400, 50);
+}
+
+drawPhaseDiagram();
+
+phaseCanvas.addEventListener('click', (e) => {
+  const rect = phaseCanvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  const fMin = 0.01, fMax = 0.08, kMin = 0.04, kMax = 0.07;
+  selectedPhaseF = fMin + x * (fMax - fMin);
+  selectedPhaseK = kMax - y * (kMax - kMin);
+  const cls = classifyPattern(selectedPhaseF, selectedPhaseK);
+  document.getElementById('phaseFVal').textContent = selectedPhaseF.toFixed(4);
+  document.getElementById('phaseKVal').textContent = selectedPhaseK.toFixed(4);
+  document.getElementById('phaseClass').textContent = cls.type.toUpperCase();
+
+  // Position marker
+  const marker = document.getElementById('phaseMarker');
+  marker.style.display = 'block';
+  marker.style.left = (x * rect.width) + 'px';
+  marker.style.top = (y * rect.height) + 'px';
+
+  // Draw preview (simple CPU sim)
+  drawPhasePreview(selectedPhaseF, selectedPhaseK);
+});
+
+function drawPhasePreview(F, k) {
+  const S = 128;
+  const u = new Float32Array(S * S).fill(1.0);
+  const v = new Float32Array(S * S).fill(0.0);
+  // Seed center
+  for (let dy = -5; dy <= 5; dy++) {
+    for (let dx = -5; dx <= 5; dx++) {
+      if (dx*dx+dy*dy <= 25) {
+        const idx = (64+dy)*S + (64+dx);
+        u[idx] = 0.5; v[idx] = 0.25;
+      }
+    }
+  }
+  // Run 2000 steps
+  const Du = 0.21, Dv = 0.105;
+  const un = new Float32Array(S*S), vn = new Float32Array(S*S);
+  for (let step = 0; step < 2000; step++) {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const i = y * S + x;
+        const xp = (x+1)%S, xm = (x-1+S)%S, yp = (y+1)%S, ym = (y-1+S)%S;
+        const lu = u[y*S+xp]+u[y*S+xm]+u[yp*S+x]+u[ym*S+x]-4*u[i];
+        const lv = v[y*S+xp]+v[y*S+xm]+v[yp*S+x]+v[ym*S+x]-4*v[i];
+        const uvv = u[i]*v[i]*v[i];
+        un[i] = u[i] + Du*lu - uvv + F*(1-u[i]);
+        vn[i] = v[i] + Dv*lv + uvv - (F+k)*v[i];
+        un[i] = Math.max(0, Math.min(1, un[i]));
+        vn[i] = Math.max(0, Math.min(1, vn[i]));
+      }
+    }
+    u.set(un); v.set(vn);
+  }
+  // Render
+  const img = phasePreviewCtx.createImageData(S, S);
+  for (let i = 0; i < S*S; i++) {
+    const val = v[i];
+    const t = val * 3;
+    let r, g, b;
+    if (t < 0.5) { r = 10+t*80; g = 15+t*180; b = 23+t*200; }
+    else if (t < 1) { r = t*12; g = 100+t*168; b = 130+t*126; }
+    else if (t < 2) { r = 15+(t-1)*240; g = 214-(t-1)*30; b = 160-(t-1)*60; }
+    else { r = 240; g = 200-(t-2)*130; b = 100+(t-2)*40; }
+    img.data[i*4] = r; img.data[i*4+1] = g; img.data[i*4+2] = b; img.data[i*4+3] = 255;
+  }
+  phasePreviewCtx.putImageData(img, 0, 0);
+}
+
+document.getElementById('btnApplyPhase').addEventListener('click', () => {
+  if (selectedPhaseF !== null) {
+    document.getElementById('feedRate').value = selectedPhaseF;
+    document.getElementById('killRate').value = selectedPhaseK;
+    updateSliderDisplays();
+    rdParams.F = selectedPhaseF;
+    rdParams.k = selectedPhaseK;
+    initRDState();
+    // Switch to RD tab
+    document.querySelectorAll('.tab')[0].click();
+  }
+});
+
+document.getElementById('btnRegeneratePhase').addEventListener('click', drawPhaseDiagram);
+
+// ============================================================
+// NEURAL CELLULAR AUTOMATA
+// ============================================================
+let ncaModel = null;
+let ncaTraining = false;
+
+function generateTarget(type, size) {
+  const data = new Float32Array(size * size * 4);
+  const cx = size / 2, cy = size / 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const dx = x - cx, dy = y - cy;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      let val = 0;
+      switch (type) {
+        case 'circle':
+          val = dist < size * 0.35 ? 1 : 0;
+          break;
+        case 'ring':
+          val = (dist > size * 0.25 && dist < size * 0.35) ? 1 : 0;
+          break;
+        case 'cross':
+          val = (Math.abs(dx) < size * 0.08 || Math.abs(dy) < size * 0.08) && dist < size * 0.4 ? 1 : 0;
+          break;
+        case 'diamond':
+          val = (Math.abs(dx) + Math.abs(dy)) < size * 0.35 ? 1 : 0;
+          break;
+        case 'gecko':
+          // Simplified gecko-like shape
+          val = (dist < size * 0.2) ? 1 : 0;
+          if (Math.abs(dx) < size*0.05 && dy > 0 && dy < size*0.4) val = 1; // tail
+          if (dy > -size*0.15 && dy < -size*0.05) { // legs
+            if (Math.abs(dx) > size*0.1 && Math.abs(dx) < size*0.3) val = 1;
+          }
+          if (dy > size*0.05 && dy < size*0.15) {
+            if (Math.abs(dx) > size*0.1 && Math.abs(dx) < size*0.25) val = 1;
+          }
+          break;
+        case 'star':
+          const angle = Math.atan2(dy, dx);
+          const r = size * 0.35 * (0.5 + 0.5 * Math.cos(5 * angle));
+          val = dist < r ? 1 : 0;
+          break;
+      }
+      // RGBA: use green channel for "alive" and alpha
+      data[idx] = 0;
+      data[idx + 1] = val;
+      data[idx + 2] = 0;
+      data[idx + 3] = val;
+    }
+  }
+  return data;
+}
+
+function drawToCanvas(canvas, data, size) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < size * size; i++) {
+    const alive = data[i * 4 + 3]; // alpha channel = alive mask
+    const g = data[i * 4 + 1]; // green channel
+    img.data[i * 4] = alive > 0.5 ? 15 : 10;
+    img.data[i * 4 + 1] = alive > 0.5 ? Math.floor(g * 214) : 15;
+    img.data[i * 4 + 2] = alive > 0.5 ? Math.floor(g * 160) : 23;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// Draw initial target
+const NCA_SIZE = 64;
+let currentTargetType = 'circle';
+let targetData = generateTarget('circle', NCA_SIZE);
+drawToCanvas(document.getElementById('ncaTarget'), targetData, NCA_SIZE);
+
+document.getElementById('ncaTargetSelect').addEventListener('change', function() {
+  currentTargetType = this.value;
+  targetData = generateTarget(this.value, NCA_SIZE);
+  drawToCanvas(document.getElementById('ncaTarget'), targetData, NCA_SIZE);
+});
+
+// NCA Model using TF.js
+function createNCAModel(hiddenChannels) {
+  const stateChannels = 16; // 4 visible (RGBA) + 12 hidden
+  const perceiveChannels = stateChannels * 3; // identity + sobel_x + sobel_y
+
+  const model = tf.sequential();
+  model.add(tf.layers.conv2d({
+    inputShape: [NCA_SIZE, NCA_SIZE, perceiveChannels],
+    filters: hiddenChannels,
+    kernelSize: 1,
+    activation: 'relu',
+    useBias: false
+  }));
+  model.add(tf.layers.conv2d({
+    filters: stateChannels,
+    kernelSize: 1,
+    activation: 'linear',
+    useBias: false,
+    kernelInitializer: 'zeros'
+  }));
+  return model;
+}
+
+function perceive(state) {
+  return tf.tidy(() => {
+    // Sobel filters for perception
+    const sobelX = tf.tensor4d([
+      [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]
+    ].map(k => k.map(r => r.map(v => {
+      const arr = new Array(16).fill(0);
+      return arr;
+    }))));
+
+    // Simpler approach: use depthwise conv with identity + finite differences
+    const padded = tf.pad(state, [[0,0],[1,1],[1,1],[0,0]], 'symmetric');
+    const channels = state.shape[3];
+
+    // Identity
+    const identity = state;
+
+    // Gradient X (right - left)
+    const left = tf.slice(padded, [0,1,0,0], [-1, NCA_SIZE, NCA_SIZE, -1]);
+    const right = tf.slice(padded, [0,1,2,0], [-1, NCA_SIZE, NCA_SIZE, -1]);
+    const gradX = tf.sub(right, left).mul(0.5);
+
+    // Gradient Y (down - up)
+    const up = tf.slice(padded, [0,0,1,0], [-1, NCA_SIZE, NCA_SIZE, -1]);
+    const down = tf.slice(padded, [0,2,1,0], [-1, NCA_SIZE, NCA_SIZE, -1]);
+    const gradY = tf.sub(down, up).mul(0.5);
+
+    return tf.concat([identity, gradX, gradY], -1);
+  });
+}
+
+function ncaStep(model, state) {
+  return tf.tidy(() => {
+    const perception = perceive(state);
+    const update = model.predict(perception);
+    // Stochastic update mask
+    const mask = tf.randomUniform([1, NCA_SIZE, NCA_SIZE, 1]).greater(0.5).cast('float32');
+    const newState = state.add(update.mul(mask).mul(0.1));
+    // Clamp
+    return newState.clipByValue(0, 1);
+  });
+}
+
+function seedState() {
+  return tf.tidy(() => {
+    const state = tf.zeros([1, NCA_SIZE, NCA_SIZE, 16]);
+    // Place seed at center
+    const seed = tf.buffer([1, NCA_SIZE, NCA_SIZE, 16]);
+    seed.set(1.0, 0, NCA_SIZE/2, NCA_SIZE/2, 3); // alive flag in alpha
+    return state.add(seed.toTensor());
+  });
+}
+
+let ncaLossHistory = [];
+
+async function trainNCA() {
+  if (ncaTraining) return;
+  ncaTraining = true;
+  document.getElementById('ncaStatus').textContent = 'Training...';
+  ncaLossHistory = [];
+
+  const hiddenChannels = parseInt(document.getElementById('ncaHidden').value);
+  const lr = Math.pow(10, parseFloat(document.getElementById('ncaLR').value));
+  const growSteps = parseInt(document.getElementById('ncaSteps').value);
+
+  document.getElementById('ncaLRVal').textContent = lr.toFixed(4);
+
+  if (ncaModel) ncaModel.dispose();
+  ncaModel = createNCAModel(hiddenChannels);
+
+  // Count params
+  let totalParams = 0;
+  ncaModel.weights.forEach(w => { totalParams += w.shape.reduce((a,b)=>a*b, 1); });
+  document.getElementById('ncaParams').textContent = totalParams;
+
+  const optimizer = tf.train.adam(lr);
+
+  // Target tensor
+  const targetTensor = tf.tidy(() => {
+    const target = tf.tensor4d(targetData, [1, NCA_SIZE, NCA_SIZE, 4]);
+    // Expand to 16 channels (pad with zeros)
+    return tf.pad(target, [[0,0],[0,0],[0,0],[0,12]]);
+  });
+
+  const epochs = 100;
+  for (let epoch = 0; epoch < epochs; epoch++) {
+    if (!ncaTraining) break;
+
+    const loss = tf.tidy(() => {
+      return optimizer.minimize(() => {
+        let state = seedState();
+        // Grow for N steps
+        const steps = growSteps + Math.floor(Math.random() * 10);
+        for (let s = 0; s < steps; s++) {
+          const newState = ncaStep(ncaModel, state);
+          state.dispose();
+          state = newState;
+        }
+        // Loss: MSE on visible channels (first 4)
+        const visible = state.slice([0,0,0,0], [-1,-1,-1,4]);
+        const targetVisible = targetTensor.slice([0,0,0,0], [-1,-1,-1,4]);
+        const mse = visible.sub(targetVisible).square().mean();
+        state.dispose();
+        return mse;
+      }, true);
+    });
+
+    const lossVal = loss.dataSync()[0];
+    ncaLossHistory.push(lossVal);
+    loss.dispose();
+
+    document.getElementById('ncaEpoch').textContent = epoch + 1;
+    document.getElementById('ncaLoss').textContent = lossVal.toFixed(5);
+    drawLossChart();
+
+    // Visualize current state every 5 epochs
+    if (epoch % 5 === 0) {
+      await visualizeNCA();
+    }
+
+    await tf.nextFrame();
+  }
+
+  ncaTraining = false;
+  document.getElementById('ncaStatus').textContent = 'Trained';
+  targetTensor.dispose();
+  await visualizeNCA();
+}
+
+async function visualizeNCA() {
+  if (!ncaModel) return;
+  const growSteps = parseInt(document.getElementById('ncaSteps').value);
+
+  let state = seedState();
+  for (let s = 0; s < growSteps; s++) {
+    const newState = ncaStep(ncaModel, state);
+    state.dispose();
+    state = newState;
+  }
+
+  const data = await state.data();
+  const visData = new Float32Array(NCA_SIZE * NCA_SIZE * 4);
+  for (let i = 0; i < NCA_SIZE * NCA_SIZE; i++) {
+    visData[i * 4] = data[i * 16];
+    visData[i * 4 + 1] = data[i * 16 + 1];
+    visData[i * 4 + 2] = data[i * 16 + 2];
+    visData[i * 4 + 3] = data[i * 16 + 3];
+  }
+  drawToCanvas(document.getElementById('ncaCurrent'), visData, NCA_SIZE);
+  state.dispose();
+}
+
+async function damageAndRegenerate() {
+  if (!ncaModel) return;
+  document.getElementById('ncaStatus').textContent = 'Regenerating...';
+  const growSteps = parseInt(document.getElementById('ncaSteps').value);
+
+  // Grow
+  let state = seedState();
+  for (let s = 0; s < growSteps; s++) {
+    const newState = ncaStep(ncaModel, state);
+    state.dispose();
+    state = newState;
+  }
+
+  // Damage: zero out a rectangular region
+  const damaged = tf.tidy(() => {
+    const mask = tf.buffer([1, NCA_SIZE, NCA_SIZE, 16]);
+    for (let y = 0; y < NCA_SIZE; y++) {
+      for (let x = 0; x < NCA_SIZE; x++) {
+        for (let c = 0; c < 16; c++) {
+          mask.set(1.0, 0, y, x, c);
+        }
+      }
+    }
+    // Cut out a region
+    const cx = NCA_SIZE / 2, cy = NCA_SIZE / 2;
+    const r = 12;
+    for (let y = cy - r; y < cy + r; y++) {
+      for (let x = cx - r; x < cx + r; x++) {
+        if (x >= 0 && x < NCA_SIZE && y >= 0 && y < NCA_SIZE) {
+          for (let c = 0; c < 16; c++) {
+            mask.set(0.0, 0, y, x, c);
+          }
+        }
+      }
+    }
+    return state.mul(mask.toTensor());
+  });
+  state.dispose();
+
+  // Show damaged state
+  const damagedData = await damaged.data();
+  const visDamaged = new Float32Array(NCA_SIZE * NCA_SIZE * 4);
+  for (let i = 0; i < NCA_SIZE * NCA_SIZE; i++) {
+    visDamaged[i * 4] = damagedData[i * 16];
+    visDamaged[i * 4 + 1] = damagedData[i * 16 + 1];
+    visDamaged[i * 4 + 2] = damagedData[i * 16 + 2];
+    visDamaged[i * 4 + 3] = damagedData[i * 16 + 3];
+  }
+  drawToCanvas(document.getElementById('ncaDamaged'), visDamaged, NCA_SIZE);
+
+  // Regenerate
+  let regenState = damaged;
+  for (let s = 0; s < growSteps; s++) {
+    const newState = ncaStep(ncaModel, regenState);
+    regenState.dispose();
+    regenState = newState;
+  }
+
+  const regenData = await regenState.data();
+  const visRegen = new Float32Array(NCA_SIZE * NCA_SIZE * 4);
+  for (let i = 0; i < NCA_SIZE * NCA_SIZE; i++) {
+    visRegen[i * 4] = regenData[i * 16];
+    visRegen[i * 4 + 1] = regenData[i * 16 + 1];
+    visRegen[i * 4 + 2] = regenData[i * 16 + 2];
+    visRegen[i * 4 + 3] = regenData[i * 16 + 3];
+  }
+  drawToCanvas(document.getElementById('ncaRegenerated'), visRegen, NCA_SIZE);
+  regenState.dispose();
+  document.getElementById('ncaStatus').textContent = 'Regen Done';
+}
+
+function drawLossChart() {
+  const canvas = document.getElementById('ncaLossChart');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, w, h);
+
+  if (ncaLossHistory.length < 2) return;
+
+  const maxLoss = Math.max(...ncaLossHistory) * 1.1;
+  const pad = { l: 50, r: 10, t: 20, b: 30 };
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+
+  // Axes
+  ctx.strokeStyle = '#2a3a52';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t);
+  ctx.lineTo(pad.l, h - pad.b);
+  ctx.lineTo(w - pad.r, h - pad.b);
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#8899aa';
+  ctx.font = '10px monospace';
+  ctx.fillText('Loss', pad.l - 30, pad.t + 5);
+  ctx.fillText('Epoch', w / 2, h - 5);
+  ctx.fillText(maxLoss.toFixed(3), pad.l - 45, pad.t + 15);
+  ctx.fillText('0', pad.l - 10, h - pad.b + 12);
+  ctx.fillText(ncaLossHistory.length.toString(), w - pad.r - 15, h - pad.b + 12);
+
+  // Line
+  ctx.strokeStyle = '#06d6a0';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ncaLossHistory.forEach((loss, i) => {
+    const x = pad.l + (i / (ncaLossHistory.length - 1)) * pw;
+    const y = pad.t + (1 - loss / maxLoss) * ph;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Fill under curve
+  const lastX = pad.l + pw;
+  const lastY = pad.t + (1 - ncaLossHistory[ncaLossHistory.length - 1] / maxLoss) * ph;
+  ctx.lineTo(lastX, h - pad.b);
+  ctx.lineTo(pad.l, h - pad.b);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(6, 214, 160, 0.1)';
+  ctx.fill();
+}
+
+document.getElementById('btnTrainNCA').addEventListener('click', trainNCA);
+document.getElementById('btnGrowNCA').addEventListener('click', visualizeNCA);
+document.getElementById('btnDamageNCA').addEventListener('click', damageAndRegenerate);
+
+document.getElementById('ncaHidden').addEventListener('input', function() {
+  document.getElementById('ncaHiddenVal').textContent = this.value;
+});
+document.getElementById('ncaLR').addEventListener('input', function() {
+  document.getElementById('ncaLRVal').textContent = Math.pow(10, parseFloat(this.value)).toFixed(4);
+});
+document.getElementById('ncaSteps').addEventListener('input', function() {
+  document.getElementById('ncaStepsVal').textContent = this.value;
+});
+
+// ============================================================
+// PERTURBATION LAB
+// ============================================================
+const pertCanvas = document.getElementById('perturbCanvas');
+const pertGL = pertCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
+const pertExt = pertGL.getExtension('EXT_color_buffer_float');
+
+let pertTool = 'seed';
+let pertPaused = false;
+let pertFrameCount = 0;
+let pertFPSFrames = 0;
+let pertFPSLast = Date.now();
+
+// Reuse shader sources but new GL context
+const pertVS = createShader(pertGL, pertGL.VERTEX_SHADER, quadVS);
+const pertCSFS = createShader(pertGL, pertGL.FRAGMENT_SHADER, computeFS);
+const pertRSFS = createShader(pertGL, pertGL.FRAGMENT_SHADER, renderFS);
+const pertComputeProg = createProgram(pertGL, pertVS, pertCSFS);
+const pertRenderProg = createProgram(pertGL, createShader(pertGL, pertGL.VERTEX_SHADER, quadVS), pertRSFS);
+
+const pertQuadBuf = pertGL.createBuffer();
+pertGL.bindBuffer(pertGL.ARRAY_BUFFER, pertQuadBuf);
+pertGL.bufferData(pertGL.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), pertGL.STATIC_DRAW);
+
+let pertTexA, pertTexB, pertFBA, pertFBB;
+
+function createPertTexture() {
+  const tex = pertGL.createTexture();
+  pertGL.bindTexture(pertGL.TEXTURE_2D, tex);
+  pertGL.texImage2D(pertGL.TEXTURE_2D, 0, pertGL.RGBA32F, SIZE, SIZE, 0, pertGL.RGBA, pertGL.FLOAT, null);
+  pertGL.texParameteri(pertGL.TEXTURE_2D, pertGL.TEXTURE_MIN_FILTER, pertGL.NEAREST);
+  pertGL.texParameteri(pertGL.TEXTURE_2D, pertGL.TEXTURE_MAG_FILTER, pertGL.NEAREST);
+  pertGL.texParameteri(pertGL.TEXTURE_2D, pertGL.TEXTURE_WRAP_S, pertGL.REPEAT);
+  pertGL.texParameteri(pertGL.TEXTURE_2D, pertGL.TEXTURE_WRAP_T, pertGL.REPEAT);
+  return tex;
+}
+
+function createPertFBO(tex) {
+  const fb = pertGL.createFramebuffer();
+  pertGL.bindFramebuffer(pertGL.FRAMEBUFFER, fb);
+  pertGL.framebufferTexture2D(pertGL.FRAMEBUFFER, pertGL.COLOR_ATTACHMENT0, pertGL.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+pertTexA = createPertTexture();
+pertTexB = createPertTexture();
+pertFBA = createPertFBO(pertTexA);
+pertFBB = createPertFBO(pertTexB);
+
+function initPertState() {
+  const data = new Float32Array(SIZE * SIZE * 4);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    data[i * 4] = 1.0;
+    data[i * 4 + 1] = 0.0;
+    data[i * 4 + 3] = 1.0;
+  }
+  // Dense random seeds
+  for (let s = 0; s < 30; s++) {
+    const cx = Math.floor(Math.random() * (SIZE - 20) + 10);
+    const cy = Math.floor(Math.random() * (SIZE - 20) + 10);
+    const r = Math.floor(Math.random() * 6 + 3);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx + dy*dy <= r*r) {
+          const x = cx + dx, y = cy + dy;
+          if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            const idx = (y * SIZE + x) * 4;
+            data[idx] = 0.5; data[idx + 1] = 0.25;
+          }
+        }
+      }
+    }
+  }
+  pertGL.bindTexture(pertGL.TEXTURE_2D, pertTexA);
+  pertGL.texImage2D(pertGL.TEXTURE_2D, 0, pertGL.RGBA32F, SIZE, SIZE, 0, pertGL.RGBA, pertGL.FLOAT, data);
+  pertGL.bindTexture(pertGL.TEXTURE_2D, pertTexB);
+  pertGL.texImage2D(pertGL.TEXTURE_2D, 0, pertGL.RGBA32F, SIZE, SIZE, 0, pertGL.RGBA, pertGL.FLOAT, data);
+  pertFrameCount = 0;
+}
+
+initPertState();
+
+let pertMouseDown = false;
+let pertMouseX = 0, pertMouseY = 0;
+
+function applyPerturbation(normX, normY) {
+  const size = parseInt(document.getElementById('pertSize').value);
+  const pixX = Math.floor(normX * SIZE);
+  const pixY = Math.floor((1 - normY) * SIZE); // flip Y for texture coords
+
+  // Read current state
+  pertGL.bindFramebuffer(pertGL.FRAMEBUFFER, pertFBA);
+  const data = new Float32Array(SIZE * SIZE * 4);
+  pertGL.readPixels(0, 0, SIZE, SIZE, pertGL.RGBA, pertGL.FLOAT, data);
+
+  switch (pertTool) {
+    case 'seed':
+      for (let dy = -size; dy <= size; dy++) {
+        for (let dx = -size; dx <= size; dx++) {
+          if (dx*dx + dy*dy <= size*size) {
+            const x = pixX + dx, y = pixY + dy;
+            if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+              const idx = (y * SIZE + x) * 4;
+              data[idx] = 0.5; data[idx + 1] = 0.25;
+            }
+          }
+        }
+      }
+      break;
+    case 'erase':
+      for (let dy = -size; dy <= size; dy++) {
+        for (let dx = -size; dx <= size; dx++) {
+          if (dx*dx + dy*dy <= size*size) {
+            const x = pixX + dx, y = pixY + dy;
+            if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+              const idx = (y * SIZE + x) * 4;
+              data[idx] = 1.0; data[idx + 1] = 0.0;
+            }
+          }
+        }
+      }
+      break;
+    case 'barrier':
+      for (let dy = -size; dy <= size; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const x = pixX + dx, y = pixY + dy;
+          if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            const idx = (y * SIZE + x) * 4;
+            data[idx] = 0.0; data[idx + 1] = 0.0;
+          }
+        }
+      }
+      break;
+    case 'cut':
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -size*2; dx <= size*2; dx++) {
+          const x = pixX + dx, y = pixY + dy;
+          if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+            const idx = (y * SIZE + x) * 4;
+            data[idx] = 1.0; data[idx + 1] = 0.0;
+          }
+        }
+      }
+      break;
+    case 'bomb':
+      for (let dy = -size*2; dy <= size*2; dy++) {
+        for (let dx = -size*2; dx <= size*2; dx++) {
+          if (dx*dx + dy*dy <= size*size*4) {
+            const x = pixX + dx, y = pixY + dy;
+            if (x >= 0 && x < SIZE && y >= 0 && y < SIZE) {
+              const idx = (y * SIZE + x) * 4;
+              data[idx] = 1.0; data[idx + 1] = 0.0;
+            }
+          }
+        }
+      }
+      break;
+  }
+
+  pertGL.bindTexture(pertGL.TEXTURE_2D, pertTexA);
+  pertGL.texImage2D(pertGL.TEXTURE_2D, 0, pertGL.RGBA32F, SIZE, SIZE, 0, pertGL.RGBA, pertGL.FLOAT, data);
+}
+
+pertCanvas.addEventListener('mousedown', (e) => {
+  pertMouseDown = true;
+  const rect = pertCanvas.getBoundingClientRect();
+  const normX = (e.clientX - rect.left) / rect.width;
+  const normY = (e.clientY - rect.top) / rect.height;
+  pertMouseX = normX;
+  pertMouseY = 1.0 - normY;
+  applyPerturbation(normX, normY);
+});
+pertCanvas.addEventListener('mousemove', (e) => {
+  if (pertMouseDown) {
+    const rect = pertCanvas.getBoundingClientRect();
+    const normX = (e.clientX - rect.left) / rect.width;
+    const normY = (e.clientY - rect.top) / rect.height;
+    pertMouseX = normX;
+    pertMouseY = 1.0 - normY;
+    if (pertTool === 'seed' || pertTool === 'erase') {
+      applyPerturbation(normX, normY);
+    }
+  }
+});
+pertCanvas.addEventListener('mouseup', () => { pertMouseDown = false; });
+pertCanvas.addEventListener('mouseleave', () => { pertMouseDown = false; });
+
+// Tool palette
+document.querySelectorAll('.tool-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    pertTool = this.dataset.tool;
+  });
+});
+
+document.getElementById('pertSize').addEventListener('input', function() {
+  document.getElementById('pertSizeVal').textContent = this.value;
+});
+document.getElementById('pertFeed').addEventListener('input', function() {
+  document.getElementById('pertFVal').textContent = parseFloat(this.value).toFixed(4);
+});
+document.getElementById('pertKill').addEventListener('input', function() {
+  document.getElementById('pertKVal').textContent = parseFloat(this.value).toFixed(4);
+});
+
+function drawPertQuad(prog) {
+  const posLoc = pertGL.getAttribLocation(prog, 'a_pos');
+  pertGL.bindBuffer(pertGL.ARRAY_BUFFER, pertQuadBuf);
+  pertGL.enableVertexAttribArray(posLoc);
+  pertGL.vertexAttribPointer(posLoc, 2, pertGL.FLOAT, false, 0, 0);
+  pertGL.drawArrays(pertGL.TRIANGLE_STRIP, 0, 4);
+}
+
+function pertStep() {
+  const F = parseFloat(document.getElementById('pertFeed').value);
+  const k = parseFloat(document.getElementById('pertKill').value);
+
+  pertGL.useProgram(pertComputeProg);
+  pertGL.uniform1f(pertGL.getUniformLocation(pertComputeProg, 'u_F'), F);
+  pertGL.uniform1f(pertGL.getUniformLocation(pertComputeProg, 'u_k'), k);
+  pertGL.uniform1f(pertGL.getUniformLocation(pertComputeProg, 'u_Du'), 0.21);
+  pertGL.uniform1f(pertGL.getUniformLocation(pertComputeProg, 'u_Dv'), 0.105);
+  pertGL.uniform1f(pertGL.getUniformLocation(pertComputeProg, 'u_dx'), 1.0);
+  pertGL.uniform2f(pertGL.getUniformLocation(pertComputeProg, 'u_brush'), 0, 0);
+  pertGL.uniform1f(pertGL.getUniformLocation(pertComputeProg, 'u_brushSize'), 0);
+  pertGL.uniform1f(pertGL.getUniformLocation(pertComputeProg, 'u_brushActive'), 0.0);
+
+  pertGL.activeTexture(pertGL.TEXTURE0);
+  pertGL.bindTexture(pertGL.TEXTURE_2D, pertTexA);
+  pertGL.uniform1i(pertGL.getUniformLocation(pertComputeProg, 'u_state'), 0);
+
+  pertGL.bindFramebuffer(pertGL.FRAMEBUFFER, pertFBB);
+  pertGL.viewport(0, 0, SIZE, SIZE);
+  drawPertQuad(pertComputeProg);
+
+  [pertTexA, pertTexB] = [pertTexB, pertTexA];
+  [pertFBA, pertFBB] = [pertFBB, pertFBA];
+}
+
+function pertRender() {
+  pertGL.useProgram(pertRenderProg);
+  pertGL.activeTexture(pertGL.TEXTURE0);
+  pertGL.bindTexture(pertGL.TEXTURE_2D, pertTexA);
+  pertGL.uniform1i(pertGL.getUniformLocation(pertRenderProg, 'u_state'), 0);
+  pertGL.bindFramebuffer(pertGL.FRAMEBUFFER, null);
+  pertGL.viewport(0, 0, SIZE, SIZE);
+  drawPertQuad(pertRenderProg);
+}
+
+function pertLoop() {
+  if (!pertPaused) {
+    for (let i = 0; i < 8; i++) pertStep();
+    pertFrameCount += 8;
+  }
+  pertRender();
+
+  pertFPSFrames++;
+  const now = Date.now();
+  if (now - pertFPSLast > 1000) {
+    document.getElementById('pertFPS').textContent = pertFPSFrames;
+    pertFPSFrames = 0;
+    pertFPSLast = now;
+  }
+  document.getElementById('pertFrame').textContent = pertFrameCount;
+
+  requestAnimationFrame(pertLoop);
+}
+pertLoop();
+
+document.getElementById('btnPertReset').addEventListener('click', initPertState);
+document.getElementById('btnPertPause').addEventListener('click', function() {
+  pertPaused = !pertPaused;
+  this.textContent = pertPaused ? 'Play' : 'Pause';
+});
+document.getElementById('btnPertFill').addEventListener('click', () => {
+  const data = new Float32Array(SIZE * SIZE * 4);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    data[i * 4] = 1.0;
+    data[i * 4 + 1] = 0.0;
+    data[i * 4 + 3] = 1.0;
+  }
+  for (let s = 0; s < 80; s++) {
+    const cx = Math.floor(Math.random() * SIZE);
+    const cy = Math.floor(Math.random() * SIZE);
+    const r = Math.floor(Math.random() * 4 + 2);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx + dy*dy <= r*r) {
+          const x = (cx + dx + SIZE) % SIZE;
+          const y = (cy + dy + SIZE) % SIZE;
+          const idx = (y * SIZE + x) * 4;
+          data[idx] = 0.5; data[idx + 1] = 0.25;
+        }
+      }
+    }
+  }
+  pertGL.bindTexture(pertGL.TEXTURE_2D, pertTexA);
+  pertGL.texImage2D(pertGL.TEXTURE_2D, 0, pertGL.RGBA32F, SIZE, SIZE, 0, pertGL.RGBA, pertGL.FLOAT, data);
+  pertFrameCount = 0;
+});
+
+</script>
+</body>
+</html>
